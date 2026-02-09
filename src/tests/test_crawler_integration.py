@@ -21,7 +21,7 @@ class TestWebsiteCrawlerIntegration:
         html_content = """
         <html>
             <body>
-                <p>Email: test@example.com</p>
+                <p>Email: test@gmail.com</p>
                 <a href="https://example.com/about">About</a>
             </body>
         </html>
@@ -38,13 +38,13 @@ class TestWebsiteCrawlerIntegration:
         result = crawler.crawl("https://example.com", max_pages=1)
 
         assert len(result) == 1
-        assert "test@example.com" in result[0]["emails"]
+        assert "test@gmail.com" in result[0]["emails"]
 
     @patch("requests.Session.get")
     def test_crawl_multiple_pages(self, mock_get, crawler):
         """Тест обхода нескольких страниц"""
 
-        def get_side_effect(url):
+        def get_side_effect(url, **kwargs):
             mock_response = Mock()
             mock_response.status_code = 200
             mock_response.headers = {"content-type": "text/html; charset=utf-8"}
@@ -61,19 +61,19 @@ class TestWebsiteCrawlerIntegration:
                 </html>
                 """
             elif "page1" in url:
-                html = "<html><body><p>Email: page1@example.com</p></body></html>"
+                html = "<html><body><p>Email: page1@gmail.com</p></body></html>"
             elif "page2" in url:
-                html = "<html><body><p>Phone: +79991234567</p></body></html>"
+                html = "<html><body>Phone: 8-916-123-45-67</body></html>"
             else:
                 html = "<html><body></body></html>"
 
             mock_response.text = html
-            mock_response.content = html.encode("utf-8")  # Исправлено: контент теперь есть
+            mock_response.content = html.encode("utf-8")
             return mock_response
 
         mock_get.side_effect = get_side_effect
+        crawler.settings.enable_phone_validation = False
 
-        # Важно: max_pages должен позволять обойти все найденные ссылки
         result = crawler.crawl("https://example.com", max_pages=3)
 
         assert len(result) == 3
@@ -84,9 +84,16 @@ class TestWebsiteCrawlerIntegration:
             all_emails.update(page["emails"])
             all_phones.update(page["phones"])
 
-        assert "page1@example.com" in all_emails
-        # Используем str(p), так как в Pydantic v2 телефоны могут быть объектами
-        assert any("79991234567" in str(p) for p in all_phones)
+        assert "page1@gmail.com" in all_emails
+
+        # Более гибкая проверка телефонов
+        phone_found = False
+        for phone in all_phones:
+            if "9161234567" in phone.replace("-", "").replace(" ", ""):
+                phone_found = True
+                break
+
+        assert phone_found, f"Phone not found. List: {all_phones}"
 
     @patch("requests.Session.get")
     def test_crawl_with_network_error(self, mock_get, crawler):

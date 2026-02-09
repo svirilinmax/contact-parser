@@ -140,7 +140,8 @@ class DataExtractor:
                 phone = tel.replace("tel:", "").strip()
                 # Очищаем от параметров
                 phone = phone.split("?")[0].split("&")[0]
-                phones.add(phone)
+                if phone:
+                    phones.add(phone)
         except Exception as e:
             logger.error(f"Ошибка при извлечении телефонов из tel: {e}")
 

@@ -63,5 +63,7 @@ class ContactParser:
 
         except Exception as e:
             logger.error(f"Ошибка при парсинге {start_url}: {e}")
-            # В случае ошибки возвращаем пустые результаты
-            return ContactInfo(url=start_url, emails=[], phones=[])
+            try:
+                return ContactInfo(url=start_url, emails=[], phones=[])
+            except Exception:
+                return ContactInfo(url="https://error.invalid", emails=[], phones=[])

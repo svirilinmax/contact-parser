@@ -1,7 +1,7 @@
 from typing import List
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class ContactInfo(BaseModel):
@@ -90,6 +90,4 @@ class ParserSettings(BaseSettings):
         description="Регулярные выражения для поиска телефонов",
     )
 
-    class Config:
-        env_prefix = "CONTACT_PARSER_"
-        case_sensitive = False
+    model_config = SettingsConfigDict(env_prefix="CONTACT_PARSER_", case_sensitive=False)

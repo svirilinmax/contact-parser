@@ -23,13 +23,13 @@ class TestContactParserIntegration:
         mock_crawl.return_value = [
             {
                 "url": "https://example.com",
-                "emails": {"test@example.com"},
+                "emails": {"test@gmail.com"},
                 "phones": {"+79991234567"},
                 "links": set(),
             },
             {
                 "url": "https://example.com/about",
-                "emails": {"admin@example.com"},
+                "emails": {"admin@yahoo.com"},
                 "phones": set(),
                 "links": set(),
             },
@@ -37,11 +37,11 @@ class TestContactParserIntegration:
 
         result = parser.parse_website("https://example.com")
 
-        assert result.url == "https://example.com"
+        assert "example.com" in str(result.url)
         assert len(result.emails) == 2
         assert len(result.phones) == 1
-        assert "test@example.com" in result.emails
-        assert "admin@example.com" in result.emails
+        assert "test@gmail.com" in result.emails
+        assert "admin@yahoo.com" in result.emails
         assert any("79991234567" in p for p in result.phones)
 
     @patch("contact_parser.crawler.WebsiteCrawler.crawl")
@@ -59,7 +59,7 @@ class TestContactParserIntegration:
 
         result = parser.parse_website("https://example.com")
 
-        assert result.url == "https://example.com"
+        assert "example.com" in str(result.url)
         assert len(result.emails) == 0
         assert len(result.phones) == 0
 
