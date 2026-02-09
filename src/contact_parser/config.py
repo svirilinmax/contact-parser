@@ -94,17 +94,33 @@ def load_settings_from_file(config_file: str) -> ParserSettings:
         ParserSettings: Настройки парсера
     """
     try:
-        from importlib.machinery import SourceFileLoader
+        # Проверяем существование файла
+        config_path = Path(config_file)
+        if not config_path.exists():
+            raise FileNotFoundError(f"Конфигурационный файл не найден: {config_file}")
 
-        # Загружаем модуль из файла
-        loader = SourceFileLoader("config_module", config_file)
-        module = loader.load_module()
+        # Читаем содержимое файла
+        content = config_path.read_text(encoding="utf-8")
+        if not content.strip():
+            raise ValueError(f"Конфигурационный файл пуст: {config_file}")
 
-        # Ищем настройки в модуле
+        # Используем exec для загрузки настроек из файла (современный подход)
         settings_dict = {}
+
+        # Создаем локальное пространство имен
+        local_namespace = {}
+
+        try:
+            # Выполняем код из файла
+            exec(content, {}, local_namespace)
+        except SyntaxError as e:
+            # Перехватываем синтаксические ошибки
+            raise ValueError(f"Синтаксическая ошибка в конфигурационном файле {config_file}: {e}")
+
+        # Ищем настройки в пространстве имен
         for key in ParserSettings.model_fields.keys():
-            if hasattr(module, key):
-                settings_dict[key] = getattr(module, key)
+            if key in local_namespace:
+                settings_dict[key] = local_namespace[key]
 
         if not settings_dict:
             raise ValueError(f"Не найдено настроек в файле {config_file}")
@@ -113,6 +129,12 @@ def load_settings_from_file(config_file: str) -> ParserSettings:
         logger.info(f"Настройки загружены из файла: {config_file}")
         return settings
 
+    except FileNotFoundError as e:
+        logger.error(str(e))
+        raise
+    except ValueError as e:
+        logger.error(str(e))
+        raise
     except Exception as e:
         logger.error(f"Ошибка загрузки настроек из файла {config_file}: {e}")
         raise

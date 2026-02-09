@@ -136,10 +136,10 @@ class TestPhoneValidator:
 
     def test_is_likely_phone_invalid(self):
         """Тест проверки невалидных телефонов"""
-
         assert PhoneValidator.is_likely_phone("123") is False
         assert PhoneValidator.is_likely_phone("") is False
         assert PhoneValidator.is_likely_phone("1726730819") is False  # ID товара
+        assert PhoneValidator.is_likely_phone("4941234567") is False
         assert PhoneValidator.is_likely_phone("00000000") is False  # Все нули
         assert PhoneValidator.is_likely_phone("12345678") is False  # Последовательность
 
@@ -217,3 +217,42 @@ class TestEmailValidator:
         assert "admin@site.org" in result
         assert "invalid@com" not in result
         assert "test@example.com" not in result  # Должен быть отфильтрован
+
+
+class TestPhoneValidatorAdvanced:
+    """Тесты для PhoneValidator"""
+
+    def test_clean_phone(self):
+        """Тест очистки телефонного номера"""
+
+        assert PhoneValidator._clean_phone("+7 (999) 123-45-67") == "+79991234567"
+        assert PhoneValidator._clean_phone("8-916-123-45-67") == "89161234567"
+        assert PhoneValidator._clean_phone("") == ""
+        assert PhoneValidator._clean_phone("abc") == ""
+
+    def test_is_sequential(self):
+        """Тест проверки последовательных цифр"""
+
+        assert PhoneValidator._is_sequential("123456") is True
+        assert PhoneValidator._is_sequential("654321") is True
+        assert PhoneValidator._is_sequential("123") is False
+        assert PhoneValidator._is_sequential("123459") is False
+
+    def test_is_too_perfect(self):
+        """Тест проверки 'идеальных' паттернов"""
+
+        assert PhoneValidator._is_too_perfect("12121212") is True
+        assert PhoneValidator._is_too_perfect("123321") is True
+        assert PhoneValidator._is_too_perfect("123456") is False
+
+    def test_validate_and_normalize_phones(self):
+        """Тест валидации и нормализации набора телефонов"""
+
+        phones = {"+7 (999) 123-45-67", "8(916)1234567", "invalid", "123", "4941234567"}
+
+        result = PhoneValidator.validate_and_normalize_phones(phones)
+
+        # Должны остаться только валидные телефоны
+        assert len(result) >= 2
+        # Проверяем что результат отсортирован
+        assert result == sorted(result)

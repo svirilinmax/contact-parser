@@ -128,6 +128,10 @@ class PhoneValidator:
 
         digits = cleaned.lstrip("+")
 
+        if len(digits) == 10 and any(digits.startswith(start) for start in cls.SUSPICIOUS_STARTS):
+            logger.debug(f"Phone {phone} rejected: suspicious start (likely product ID)")
+            return False
+
         # ДЕБАГ вывод
         logger.debug(f"DEBUG is_likely_phone: phone={phone}, cleaned={cleaned}, digits={digits}, len={len(digits)}")
 
