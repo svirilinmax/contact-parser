@@ -1,6 +1,7 @@
 import logging
 import re
 from typing import List, Optional, Set
+from urllib.parse import urlparse
 
 try:
     HAS_PHONENUMBERS = True
@@ -94,83 +95,156 @@ class PhoneValidator:
     # TODO: Подозрительные начала номеров (часто ID товаров)
     SUSPICIOUS_STARTS = ["494", "443", "475", "476", "172", "173"]
 
+    ID_LIKE_PATTERNS = [
+        r"^\d{8,10}$",  # Многие артикулы имеют длину 8-10 цифр
+        r"^00\d+$",  # ID часто начинаются с нескольких нулей
+    ]
+
+    # Карта соответствия доменов и кодов стран
+    DOMAIN_COUNTRY_MAP = {
+        "ru": "7",
+        "by": "375",
+        "kz": "7",
+        "ua": "380",
+        "ge": "995",
+        "am": "374",
+        "uz": "998",
+        "kg": "996",
+        "md": "373",
+        "az": "994"
+    }
+
     @classmethod
     def _clean_phone(cls, phone: str) -> str:
         """Очищает телефон от нецифровых символов"""
         if not phone:
             return ""
 
-        # Сохраняем плюс в начале
-        has_plus = phone.startswith("+")
-        cleaned = re.sub(r"[^\d+]", "", phone)
+        temp_cleaned = re.sub(r"[^\d+]", "", phone)
 
-        # Убираем плюсы из середины строки
-        if "+" in cleaned[1:]:
-            cleaned = cleaned[0] + cleaned[1:].replace("+", "")
+        if not temp_cleaned:
+            return ""
 
-        # Возвращаем плюс если он был изначально
-        if has_plus and not cleaned.startswith("+"):
-            cleaned = "+" + cleaned
+        has_leading_plus = temp_cleaned.startswith("+")
 
-        return cleaned
+        digits_only = re.sub(r"\D", "", temp_cleaned)
+
+        if not digits_only:
+            return ""
+
+        if has_leading_plus:
+            return "+" + digits_only
+
+        return digits_only
 
     @classmethod
-    def is_likely_phone(cls, phone: str) -> bool:
-        """Упрощенный метод определения похожести на телефон - для тестов"""
+    def is_likely_phone(cls, phone: str, current_url: str = "") -> bool:
+        """
+        Универсальный метод определения похожести на телефон.
+        """
         if not phone or not isinstance(phone, str):
             return False
 
-        # Очистка
-        cleaned = cls._clean_phone(phone)
-
-        if not cleaned:
+        # Быстрая проверка: если номер слишком длинный или короткий
+        if len(phone) < 5 or len(phone) > 25:
             return False
 
+        cleaned = cls._clean_phone(phone)
         digits = cleaned.lstrip("+")
 
-        if len(digits) == 10 and any(digits.startswith(start) for start in cls.SUSPICIOUS_STARTS):
-            logger.debug(f"Phone {phone} rejected: suspicious start (likely product ID)")
+        # Если после очистки слишком мало цифр
+        if len(digits) < cls.MIN_PHONE_LENGTH or len(digits) > cls.MAX_PHONE_LENGTH:
             return False
 
-        # ДЕБАГ вывод
-        logger.debug(f"DEBUG is_likely_phone: phone={phone}, cleaned={cleaned}, digits={digits}, len={len(digits)}")
+        has_plus = phone.startswith("+")
+        has_formatting = any(char in phone for char in "() -.")
 
-        # Базовые проверки
-        if not digits.isdigit():
-            logger.debug(f"Phone {phone} rejected: contains non-digits")
-            return False
-
-        # Проверка длины (более гибкая)
-        if len(digits) < 10 or len(digits) > 15:
-            logger.debug(f"Phone {phone} rejected: invalid length {len(digits)}")
-            return False
-
-        # Российские номера
-        if cleaned.startswith("+7") or cleaned.startswith("+375"):
-            return True
-
-        # Номера без + (российские локальные)
-        if (len(digits) == 10 and digits[0] == "9") or (len(digits) == 11 and digits.startswith("8")):
-            return True
-
-        # Американские номера
-        if cleaned.startswith("+1") and len(digits) == 11:
-            return True
-
-        # Общий случай: если номер выглядит разумно
-        if 10 <= len(digits) <= 12:
-            # Проверка что не все цифры одинаковые
-            if len(set(digits)) < 3:
-                logger.debug(f"Phone {phone} rejected: too few unique digits")
+        # Проверка паттернов, которые точно НЕ телефоны
+        for pattern_str in cls.NOT_PHONE_PATTERNS:
+            if re.match(pattern_str, digits):
+                logger.debug(f"Phone {phone} matched NOT_PHONE pattern {pattern_str}")
                 return False
+
+        # Проверка на подозрительные начала
+        if any(digits.startswith(start) for start in cls.SUSPICIOUS_STARTS):
+            logger.debug(f"Phone {phone} has suspicious start")
+            return False
+
+        # Проверка на ID-подобные паттерны
+        for pattern_str in cls.ID_LIKE_PATTERNS:
+            if re.match(pattern_str, digits):
+                logger.debug(f"Phone {phone} matched ID_LIKE pattern {pattern_str}")
+                return False
+
+        # Проверка последовательностей и "идеальных" паттернов
+        if cls._is_sequential(digits) or cls._is_too_perfect(digits):
+            logger.debug(f"Phone {phone} is too perfect/sequential")
+            return False
+
+        # Проверка уникальности цифр
+        if len(set(digits)) < cls.MIN_UNIQUE_DIGITS:
+            logger.debug(f"Phone {phone} has too few unique digits")
+            return False
+
+        # Проверка слишком большого количества нулей
+        if digits.count("0") > len(digits) * cls.MAX_REPEAT_RATIO:
+            logger.debug(f"Phone {phone} has too many zeros")
+            return False
+
+        # Получаем код страны на основе домена сайта
+        home_code = None
+        if current_url:
+            try:
+                domain = urlparse(current_url).netloc.split('.')[-1].lower()
+                home_code = cls.DOMAIN_COUNTRY_MAP.get(domain)
+            except Exception:
+                pass
+
+        # Для номеров с плюсом
+        if has_plus:
+            # Проверяем валидность кода страны
+            matched_code = any(digits.startswith(code) for code in cls.VALID_COUNTRY_CODES)
+            if not matched_code:
+                logger.debug(f"Phone {phone} has invalid country code")
+                return False
+
+            if len(digits) < 8:
+                return False
+
             return True
 
-        logger.debug(f"Phone {phone} rejected: doesn't match any phone pattern")
-        return False
+        if home_code:
+            # Российские номера
+            if home_code == "7":
+                if not ((len(digits) == 10 and digits.startswith("9")) or
+                        (len(digits) == 11 and digits.startswith("8"))):
+                    logger.debug(f"Phone {phone} doesn't match Russian format for .ru domain")
+                    return False
+
+            # Белорусские номера
+            elif home_code == "375":
+                if not (digits.startswith(("25", "29", "33", "44", "17")) and
+                        9 <= len(digits) <= 12):
+                    logger.debug(f"Phone {phone} doesn't match Belarusian format for .by domain")
+                    return False
+
+        # Для номеров без плюса и без известного домена
+        else:
+            # Без кода страны и без форматирования подозрительно
+            if not has_formatting:
+                logger.debug(f"Phone {phone} has no formatting and no domain context")
+                return False
+
+            # Проверяем, что это не просто набор цифр
+            if len(set(digits)) < 4:
+                return False
+
+        return True
 
     @staticmethod
     def _is_sequential(digits: str) -> bool:
         """Проверяет последовательные цифры (только явные последовательности)"""
+
         if len(digits) < 6:
             return False
 
@@ -191,6 +265,7 @@ class PhoneValidator:
     @staticmethod
     def _is_too_perfect(digits: str) -> bool:
         """Проверяет слишком 'идеальные' паттерны"""
+
         # Все цифры одинаковые (уже проверено выше)
         if len(set(digits)) == 1:
             return True
@@ -217,6 +292,7 @@ class PhoneValidator:
     @staticmethod
     def _is_valid_local_number(digits: str) -> bool:
         """Проверяет валидность локального номера (без кода страны)"""
+
         # Не должен начинаться с 0 (обычно)
         if digits[0] == "0":
             return False
@@ -239,9 +315,9 @@ class PhoneValidator:
         return True
 
     @classmethod
-    def normalize_phone(cls, phone: str) -> Optional[str]:
+    def normalize_phone(cls, phone: str, current_url: str = "") -> Optional[str]:
         """
-        Упрощенная нормализация телефона для тестов
+        Нормализует телефонный номер с учетом домена сайта
         """
         if not phone:
             return None
@@ -254,42 +330,63 @@ class PhoneValidator:
 
         digits = cleaned.lstrip("+")
 
-        # Проверка длины
-        if len(digits) < 10 or len(digits) > 15:
+        if len(digits) < 8 or len(digits) > 15:
             return None
 
-        # Если уже с +, возвращаем как есть
         if cleaned.startswith("+"):
+            if not any(digits.startswith(code) for code in cls.VALID_COUNTRY_CODES):
+                return None
             return cleaned
 
-        # Российские/Казахстанские
-        if len(digits) == 11 and digits.startswith("8"):
-            return "+7" + digits[1:]
-        if len(digits) == 10 and digits[0] == "9":
-            return "+7" + digits
-        if len(digits) == 11 and digits.startswith("7"):
-            return "+" + digits
+        home_code = None
+        if current_url:
+            try:
+                domain = urlparse(current_url).netloc.split('.')[-1].lower()
+                home_code = cls.DOMAIN_COUNTRY_MAP.get(domain)
+            except Exception:
+                pass
 
-        # Белорусские
-        if len(digits) == 9 and digits[:2] in ["25", "29", "33", "44"]:
-            return "+375" + digits
-        elif len(digits) == 12 and digits.startswith("375"):
-            return "+" + digits
+        # Российские/Казахстанские (.ru, .kz и т.д.)
+        if home_code == "7":
+            if len(digits) == 10 and digits.startswith("9"):
+                return "+7" + digits
+            if len(digits) == 11 and digits.startswith("8"):
+                return "+7" + digits[1:]
+            if len(digits) == 11 and digits.startswith("7"):
+                return "+" + digits
+            if len(digits) == 10:
+                return None
 
-        # Американские
-        if len(digits) == 10:
-            return "+1" + digits
-        if len(digits) == 11 and digits.startswith("1"):
-            return "+" + digits
+        # Белорусские (.by)
+        if home_code == "375":
+            if len(digits) == 9 and digits[:2] in ["25", "29", "33", "44", "17"]:
+                return "+375" + digits
+            elif len(digits) == 12 and digits.startswith("375"):
+                return "+" + digits
 
-        # Общий случай - добавляем + если номер выглядит разумно
-        if 10 <= len(digits) <= 12:
+        # Американские/Канадские (.com, .org, .net по умолчанию)
+        if home_code == "1" or (not home_code and len(digits) == 10):
+            if len(digits) == 10:
+                return "+1" + digits
+            if len(digits) == 11 and digits.startswith("1"):
+                return "+" + digits
+
+        if len(digits) >= 10 and len(digits) <= 12:
+            if any(digits.startswith(start) for start in cls.SUSPICIOUS_STARTS):
+                return None
+
+            # Проверяем на паттерны ID
+            for pattern in cls.ID_LIKE_PATTERNS:
+                if re.match(pattern, digits):
+                    return None
+
+            # Добавляем + для разумных номеров
             return "+" + digits
 
         return None
 
     @classmethod
-    def validate_and_normalize_phones(cls, phones: Set[str]) -> List[str]:
+    def validate_and_normalize_phones(cls, phones: Set[str], current_url: str = "") -> List[str]:
         """
         Валидирует и нормализует набор телефонных номеров
         Возвращает отсортированный список уникальных нормализованных номеров
@@ -297,13 +394,12 @@ class PhoneValidator:
         valid_phones = set()
 
         for phone in phones:
-            normalized = cls.normalize_phone(phone)
+            normalized = cls.normalize_phone(phone, current_url)
             if normalized:
-                # Двойная проверка после нормализации
-                if cls.is_likely_phone(normalized):
+                if cls.is_likely_phone(normalized, current_url):
                     valid_phones.add(normalized)
                 else:
-                    logger.debug(f"Phone {phone} -> {normalized} failed final validation")
+                    logger.debug(f"Phone {phone} -> {normalized} failed final validation (url: {current_url})")
 
         return sorted(list(valid_phones))
 

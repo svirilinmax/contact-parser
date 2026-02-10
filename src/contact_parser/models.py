@@ -1,4 +1,4 @@
-from typing import List
+from typing import Dict, List
 
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -88,6 +88,35 @@ class ParserSettings(BaseSettings):
             r"\+375[-\s]?\d{2}[-\s]?\d{3}[-\s]?\d{2}[-\s]?\d{2}",
         ],
         description="Регулярные выражения для поиска телефонов",
+    )
+
+    # Дополнительные настройки валидации телефонов
+    use_domain_context: bool = Field(
+        default=True, description="Использовать домен сайта для контекстной валидации телефонов"
+    )
+
+    strict_phone_validation: bool = Field(
+        default=True, description="Строгая валидация телефонов (отсеивает подозрительные номера)"
+    )
+
+    # Карта домен->код страны
+    domain_country_map: Dict[str, str] = Field(
+        default_factory=lambda: {
+            "ru": "7",
+            "by": "375",
+            "kz": "7",
+            "ua": "380",
+            "ge": "995",
+            "am": "374",
+            "uz": "998",
+            "kg": "996",
+            "md": "373",
+            "az": "994",
+            "com": "1",
+            "org": "1",
+            "net": "1",
+        },
+        description="Карта соответствия доменов и кодов стран",
     )
 
     model_config = SettingsConfigDict(env_prefix="CONTACT_PARSER_", case_sensitive=False)

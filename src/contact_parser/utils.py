@@ -16,9 +16,12 @@ class URLNormalizer:
     def normalize_url(url: str, base_url: str) -> Optional[str]:
         """Нормализует URL, преобразуя относительные ссылки в абсолютные"""
 
+        # Убираем лишние пробелы по краям
+        url = url.strip() if url else ""
+
         try:
-            # Пропускаем не-HTML контент
-            if url.startswith(("#", "mailto:", "tel:", "javascript:", "data:")):
+            # Добавляем проверку на пустую строку в условие
+            if not url or url.startswith(("#", "mailto:", "tel:", "javascript:", "data:")):
                 return None
 
             # Преобразуем относительный URL в абсолютный
@@ -46,10 +49,18 @@ class URLNormalizer:
     def is_same_domain(url: str, base_domain: str) -> bool:
         """Проверяет, принадлежит ли URL тому же домену"""
 
+        if not url or not url.strip():
+            return False
+
         try:
             parsed = urlparse(url)
-            # Учитываем поддомены и отсутствие домена (относительные ссылки)
-            return parsed.netloc == base_domain or parsed.netloc.endswith(f".{base_domain}") or not parsed.netloc
+
+            if parsed.netloc:
+                return parsed.netloc == base_domain or parsed.netloc.endswith(f".{base_domain}")
+            if url.startswith(("/", "./", "../")):
+                return True
+            return False
+
         except Exception:
             return False
 
@@ -67,8 +78,18 @@ class URLNormalizer:
     def get_domain(url: str) -> Optional[str]:
         """Извлекает домен из URL"""
 
+        if not url or not url.strip():
+            return None
+
         try:
-            return urlparse(url).netloc
+            parsed = urlparse(url)
+
+            if not parsed.netloc:
+                if "." in url and "/" not in url.split(":")[0]:
+                    return url
+                return None
+
+            return parsed.netloc
         except Exception:
             return None
 

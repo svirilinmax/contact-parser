@@ -101,8 +101,8 @@ class WebsiteCrawler:
             if not page_data:
                 return url, None, set()
 
-            # Извлекаем данные из HTML
-            extracted = self.data_extractor.extract_from_html(page_data["html"])
+            # Извлекаем данные из HTML, передавая текущий URL
+            extracted = self.data_extractor.extract_from_html(page_data["html"], url)
 
             # Фильтруем ссылки по домену
             filtered_links = set()

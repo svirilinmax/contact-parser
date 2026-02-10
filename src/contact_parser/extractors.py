@@ -48,7 +48,7 @@ class DataExtractor:
             r"\+1[-\s]?\(?\d{3}\)?[-\s]?\d{3}[-\s]?\d{4}",
         ]
 
-    def extract_from_html(self, html: str) -> dict:
+    def extract_from_html(self, html: str, current_url: str = "") -> dict:
         """Основной метод для извлечения данных из HTML"""
 
         result = {"emails": set(), "phones": set(), "links": set()}
@@ -65,11 +65,10 @@ class DataExtractor:
             # Извлекаем email
             result["emails"] = self._extract_emails(text, tree)
 
-            # Извлекаем телефоны
             if self.settings.enable_phone_validation:
-                result["phones"] = self._extract_phones_with_validation(text, tree)
+                result["phones"] = self._extract_phones_with_validation(text, tree, current_url)
             else:
-                result["phones"] = self._extract_phones_universal(text, tree)
+                result["phones"] = self._extract_phones_universal(text, tree, current_url)
 
             # Извлекаем ссылки
             result["links"] = self._extract_links(tree)
@@ -121,7 +120,7 @@ class DataExtractor:
                 normalized.add(email.lower().strip())
             return normalized
 
-    def _extract_phones_with_validation(self, text: str, tree: HtmlElement) -> Set[str]:
+    def _extract_phones_with_validation(self, text: str, tree: HtmlElement, current_url: str = "") -> Set[str]:
         """Извлекает телефонные номера с улучшенной валидацией"""
 
         phones = set()
@@ -145,10 +144,9 @@ class DataExtractor:
         except Exception as e:
             logger.error(f"Ошибка при извлечении телефонов из tel: {e}")
 
-        # Валидируем и нормализуем телефоны
-        return set(self.phone_validator.validate_and_normalize_phones(phones))
+        return set(self.phone_validator.validate_and_normalize_phones(phones, current_url))
 
-    def _extract_phones_universal(self, text: str, tree: HtmlElement) -> Set[str]:
+    def _extract_phones_universal(self, text: str, tree: HtmlElement, current_url: str = "") -> Set[str]:
         """Извлекает телефонные номера (универсальный метод для любых стран)"""
 
         phones = set()
@@ -169,12 +167,14 @@ class DataExtractor:
         except Exception as e:
             logger.error(f"Ошибка при извлечении телефонов из tel: {e}")
 
-        # 4. Фильтруем и нормализуем найденные телефоны
         valid_phones = set()
         for phone in phones:
             normalized = self._normalize_phone_universal(phone)
             if normalized and self._is_valid_phone_universal(normalized):
-                valid_phones.add(normalized)
+                if current_url and self.phone_validator.is_likely_phone(normalized, current_url):
+                    valid_phones.add(normalized)
+                elif not current_url:
+                    valid_phones.add(normalized)
 
         return valid_phones
 
