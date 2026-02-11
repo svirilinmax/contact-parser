@@ -14,40 +14,34 @@ def setup_logging(
     log_file: Optional[str] = None,
     log_format: Optional[str] = None,
 ) -> None:
-    """
-    Настраивает логирование для приложения
+    """Настраивает логирование для приложения"""
 
-    Важно: В stdout НИЧЕГО не выводится, только в stderr или файл
-    """
-
-    log_level = getattr(logging, level.upper()) if level else logging.INFO
+    if level:
+        log_level = getattr(logging, str(level).upper(), None)
+        if log_level is None:
+            print(f"Предупреждение: Неизвестный уровень '{level}', использую INFO", file=sys.stderr)
+            log_level = logging.INFO
+    else:
+        log_level = logging.INFO
 
     if log_format is None:
         log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 
-    # Создаем форматтер
     formatter = logging.Formatter(log_format, datefmt="%Y-%m-%d %H:%M:%S")
 
-    # Создаем обработчик для stderr (НЕ stdout!)
-    stderr_handler = logging.StreamHandler(sys.stderr)
-    stderr_handler.setFormatter(formatter)
-    stderr_handler.setLevel(log_level)
-
-    # Настраиваем корневой логгер
     root_logger = logging.getLogger()
     root_logger.setLevel(log_level)
 
-    # Удаляем существующие обработчики
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
-    # Добавляем обработчик stderr
+    stderr_handler = logging.StreamHandler(sys.stderr)
+    stderr_handler.setFormatter(formatter)
+    stderr_handler.setLevel(log_level)
     root_logger.addHandler(stderr_handler)
 
-    # Добавляем файловый обработчик, если указан
     if log_file:
         try:
-            # Создаем директорию для логов, если её нет
             log_path = Path(log_file)
             log_path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -55,16 +49,11 @@ def setup_logging(
             file_handler.setFormatter(formatter)
             file_handler.setLevel(log_level)
             root_logger.addHandler(file_handler)
-
-            # Сообщение о файле логирования тоже в stderr
-            logger.info(f"Логи будут записываться в файл: {log_file}")
         except Exception as e:
-            logger.error(f"Не удалось настроить файловое логирование: {e}")
+            print(f"Ошибка файлового логирования: {e}", file=sys.stderr)
 
-    # Устанавливаем уровень для сторонних библиотек
-    logging.getLogger("urllib3").setLevel(logging.WARNING)
-    logging.getLogger("requests").setLevel(logging.WARNING)
-    logging.getLogger("lxml").setLevel(logging.WARNING)
+    for lib in ["urllib3", "requests", "lxml"]:
+        logging.getLogger(lib).setLevel(logging.WARNING)
 
 
 def load_settings_from_env() -> ParserSettings:

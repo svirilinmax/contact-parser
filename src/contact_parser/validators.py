@@ -46,12 +46,10 @@ class PhoneValidator:
         """
         Определяет, похож ли номер на реальный телефон.
         """
-
         if not phone or not isinstance(phone, str):
             return False
 
         cleaned = cls._clean_phone(phone)
-
         if not cleaned:
             return False
 
@@ -88,7 +86,6 @@ class PhoneValidator:
 
         # --- 6. ПОЛУЧАЕМ КОД СТРАНЫ ИЗ ДОМЕНА ---
         home_code = None
-        tld = None
         if current_url:
             try:
                 domain_parts = urlparse(current_url).netloc.split(".")
@@ -110,9 +107,15 @@ class PhoneValidator:
                 logger.debug(f"Phone {phone}: invalid country code")
                 return False
 
-            # ПРОВЕРКА ДЛИНЫ ПО СТРАНЕ!
+            # ПРОВЕРКА ДЛЯ РФ: Код города/оператора не может начинаться с 0, 1, 2
+            if country_code == "7" and len(digits) > 1:
+                if digits[1] in "012":
+                    logger.debug(f"Phone {phone}: Russian code cannot start with {digits[1]}")
+                    return False
+
+            # ПРОВЕРКА ДЛИНЫ ПО СТРАНЕ
             if not cls._is_valid_length_for_country(digits, country_code, has_plus=True):
-                logger.debug(f"Phone {phone}: invalid length {len(digits)} for country code {country_code}")
+                logger.debug(f"Phone {phone}: invalid length {len(digits)} for country {country_code}")
                 return False
 
             # Для .ru домена ТОЛЬКО +7
@@ -136,11 +139,7 @@ class PhoneValidator:
         if home_code == "7":
             if len(digits) == 10 and digits.startswith("9"):
                 return True
-            if len(digits) == 11 and digits.startswith("8"):
-                return True
-            if len(digits) == 11 and digits.startswith("7"):
-                return True
-            if len(digits) == 11 and digits.startswith("8800"):
+            if len(digits) == 11 and digits[0] in "78":
                 return True
             logger.debug(f"Phone {phone}: invalid Russian format")
             return False
@@ -204,29 +203,12 @@ class PhoneValidator:
             default_max = getattr(constants, "DEFAULT_MAX_LENGTH", 15)
             return default_min <= len(digits) <= default_max
 
-        # Для номеров с плюсом
+        valid_lengths = list(standards.values())
+
         if has_plus:
-            # Полный формат - основная длина
-            full_length = standards.get("full", 0)
-            if full_length and len(digits) == full_length:
-                return True
-            # Также разрешаем короткие форматы, если они есть
-            short_length = standards.get("short", 0)
-            if short_length and len(digits) == short_length:
-                return True
-            return False
-
-        # Для локальных номеров (без плюса)
+            return len(digits) in valid_lengths
         else:
-            valid_lengths = []
-            for key, length in standards.items():
-                if key != "full":
-                    valid_lengths.append(length)
-
-            if valid_lengths:
-                return len(digits) in valid_lengths
-
-            return False
+            return len(digits) in valid_lengths
 
     @staticmethod
     def _is_sequential(digits: str) -> bool:
@@ -335,6 +317,8 @@ class PhoneValidator:
                 return "+" + digits
             if len(digits) == 9 and digits[:2] in ["25", "29", "33", "44", "17"]:
                 return "+375" + digits
+            if len(digits) == 12 and digits.startswith("375"):
+                return "+" + digits
             return None
 
         # Украина

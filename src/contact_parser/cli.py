@@ -107,7 +107,6 @@ def load_settings(args: argparse.Namespace) -> ParserSettings:
             return load_settings_from_file(str(args.config))
         except Exception as e:
             print(f"Ошибка загрузки конфигурации: {e}", file=sys.stderr)
-            sys.exit(1)
 
     # Загружаем настройки из аргументов командной строки
     if args.max_pages is not None:
