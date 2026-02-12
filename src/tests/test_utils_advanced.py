@@ -178,3 +178,25 @@ class TestPatternMatcherAdvanced:
         assert "123" in matches
         assert "abc" in matches
         assert "456" in matches
+
+    def test_url_normalizer_get_domain_edge(self):
+        """Тест извлечения домена из URL с граничными случаями"""
+
+        assert URLNormalizer.get_domain("") is None
+        assert URLNormalizer.get_domain("   ") is None
+        assert URLNormalizer.get_domain("example.com") == "example.com"
+        assert URLNormalizer.get_domain("http://") is None
+
+    def test_html_parser_clean_html_error(self):
+        """Тест ошибки при очистке HTML"""
+
+        parser = HTMLParser()
+        result = parser.clean_html("<invalid>html")
+        assert "<invalid>html" in result
+
+    def test_pattern_matcher_compile_error(self):
+        """Тест ошибки компиляции паттерна"""
+
+        matcher = PatternMatcher()
+        patterns = matcher.compile_patterns([r"[invalid", r"\d{3}-\d{2}"])
+        assert len(patterns) == 1  # Только валидный

@@ -378,7 +378,6 @@ class EmailValidator:
     try:
         BAD_DOMAINS = constants.BAD_EMAIL_DOMAINS
     except AttributeError:
-        # Если константы нет - создаём базовую
         logger.warning("constants.BAD_EMAIL_DOMAINS не найдена, использую базовый набор")
         BAD_DOMAINS = {"example.com", "example.ru", "test.com", "test.ru", "domain.com", "localhost", "invalid.com"}
 
@@ -410,8 +409,12 @@ class EmailValidator:
             return False
 
         # Проверка формата
+        print(f"DEBUG: local='{local_part}' match={bool(re.match(r'^[a-zA-Z0-9._%+-]+$', local_part))}")
         if not re.match(r"^[a-zA-Z0-9._%+-]+$", local_part):
             return False
+
+        # if not re.match(r"^[a-zA-Z0-9._%+-]+$", local_part):
+        #     return False
         if not re.match(r"^[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$", domain):
             return False
 

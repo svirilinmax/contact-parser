@@ -112,3 +112,16 @@ class TestResultSaver:
 
         assert filepath.exists()
         assert filepath.name == "contacts_20240115_103000.json"
+
+    def test_save_to_directory_with_custom_filename(self, tmp_path):
+        """Тест сохранения с кастомным именем файла"""
+
+        from contact_parser.output import ResultSaver
+
+        result = {"url": "https://example.com", "emails": ["test@example.com"], "phones": ["+79991234567"]}
+
+        output_dir = tmp_path / "results"
+        filepath = ResultSaver.save_to_directory(result, output_dir, "custom.json")
+
+        assert filepath.name == "custom.json"
+        assert filepath.exists()

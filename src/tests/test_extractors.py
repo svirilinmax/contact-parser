@@ -1,3 +1,5 @@
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from contact_parser.extractors import DataExtractor
@@ -157,6 +159,13 @@ class TestPhoneValidatorAdvanced:
         assert PhoneValidator._is_valid_length_for_country("291234567", "375", has_plus=False) is True
         assert PhoneValidator._is_valid_length_for_country("37599999999", "375", has_plus=True) is False  # 11 цифр
 
+    def test_phone_patterns_compilation(self):
+        """Тест компиляции паттернов телефонов"""
+
+        settings = ParserSettings(phone_patterns=["invalid[pattern", r"\d{3}-\d{2}-\d{2}"])
+        extractor = DataExtractor(settings)
+        assert len(extractor.phone_patterns) == 1
+
 
 class TestEmailValidatorAdvanced:
     """Тесты для EmailValidator"""
@@ -230,6 +239,119 @@ class TestDataExtractorAdvanced:
         extractor = DataExtractor(ParserSettings(enable_phone_validation=False))
         result = extractor.extract_from_html(html)
 
-        # Должны найти данные в скриптах и скрытых элементах
         assert len(result["emails"]) >= 1
         assert len(result["phones"]) >= 2
+
+
+class TestDataExtractorCoverage:
+    @pytest.fixture
+    def extractor(self):
+        """Создает экземпляр DataExtractor для тестов"""
+
+        settings = ParserSettings(enable_phone_validation=True)
+        return DataExtractor(settings)
+
+    def test_extract_data_email_attribute(self, extractor):
+        html = '<div data-email="hidden@example.com">Contact</div>'
+        from lxml import html as lxml_html
+
+        tree = lxml_html.fromstring(html)
+        assert tree.xpath("//*[@data-email]/@data-email") == ["hidden@example.com"]
+        extractor.settings.enable_email_validation = False
+        result = extractor.extract_from_html(html)
+        assert "hidden@example.com" in result["emails"]
+
+    def test_data_email_with_validation(self, extractor):
+        """Тест data-email с включенной валидацией"""
+
+        extractor.settings.enable_email_validation = True
+        html = '<div data-email="user_name@idomain.com">Contact</div>'
+        result = extractor.extract_from_html(html)
+        assert "user_name@idomain.com" in result["emails"]
+
+    def test_extract_data_phone_attribute(self, extractor):
+        """Тест извлечения телефона из data-phone атрибут"""
+
+        html = '<div data-phone="+79991234567">Call</div>'
+        result = extractor.extract_from_html(html, current_url="https://example.ru")
+        assert any("+79991234567" in p for p in result["phones"])
+
+    def test_extract_meta_refresh_links(self, extractor):
+        """Тест извлечения ссылок из meta refresh"""
+
+        html = '<meta http-equiv="refresh" content="0;url=https://example.com/new-page">'
+        result = extractor.extract_from_html(html)
+        assert "https://example.com/new-page" in result["links"]
+
+    def test_extract_canonical_links(self, extractor):
+        """Тест извлечения canonical ссылок"""
+
+        html = '<link rel="canonical" href="https://example.com/main-page">'
+        result = extractor.extract_from_html(html)
+        assert "https://example.com/main-page" in result["links"]
+
+    def test_extract_emails_xpath_error(self, extractor):
+        """Тест обработки ошибки XPath при извлечении email"""
+
+        with patch("lxml.html.HtmlElement.xpath", side_effect=Exception("XPath error")):
+            tree = extractor.html_parser.parse_html("<html></html>")
+            result = extractor._extract_emails("", tree)
+            assert result == set()
+
+    def test_extract_emails_xpath_error_logging(self, extractor):
+        """Тест логирования ошибки XPath при извлечении email"""
+
+        with patch("contact_parser.extractors.logger") as mock_logger:
+            with patch("lxml.html.HtmlElement.xpath", side_effect=Exception("XPath error")):
+                tree = extractor.html_parser.parse_html("<html></html>")
+                result = extractor._extract_emails("", tree)
+                assert result == set()
+                mock_logger.error.assert_called_once()
+
+    def test_extract_phones_xpath_error(self, extractor):
+        """Тест обработки ошибки XPath при извлечении телефонов"""
+
+        with patch("lxml.html.HtmlElement.xpath", side_effect=Exception("XPath error")):
+            result = extractor._extract_phones_with_validation("", None, "https://example.ru")
+            assert result == set()
+
+    def test_extract_phones_xpath_error_logging(self, extractor):
+        """Тест логирования ошибки XPath при извлечении телефонов"""
+
+        with patch("contact_parser.extractors.logger") as mock_logger:
+            with patch("lxml.html.HtmlElement.xpath", side_effect=Exception("XPath error")):
+                result = extractor._extract_phones_with_validation("", None, "https://example.ru")
+                assert result == set()
+                mock_logger.error.assert_called_once()
+
+    def test_extract_phones_debug_logging(self, extractor):
+        """Тест debug логирования при извлечении телефонов"""
+
+        with patch("contact_parser.extractors.logger") as mock_logger:
+            mock_logger.debug = MagicMock()
+            html = '<a href="tel:+79991234567">Call</a>'
+            extractor._extract_phones_with_validation("", extractor.html_parser.parse_html(html), "https://example.ru")
+            mock_logger.debug.assert_called()
+
+    def test_extract_phones_raw_with_tel(self, extractor):
+        """Тест извлечения телефонов из tel ссылок в raw режиме"""
+
+        extractor.settings.enable_phone_validation = False
+        html = '<a href="tel:+79991234567">Call</a>'
+        result = extractor.extract_from_html(html)
+        assert len(result["phones"]) >= 1
+
+    def test_extract_phones_raw_with_tel_validation_off(self, extractor):
+        """Тест raw режима с выключенной валидацией"""
+
+        extractor.settings.enable_phone_validation = False
+        html = '<a href="tel:+79991234567">Call</a>'
+        result = extractor.extract_from_html(html)
+        assert "+79991234567" in result["phones"]
+
+    def test_extract_canonical_links_empty(self, extractor):
+        """Тест обработки пустой canonical ссылки"""
+
+        html = '<link rel="canonical" href="">'
+        result = extractor.extract_from_html(html)
+        assert "" not in result["links"]

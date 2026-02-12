@@ -103,10 +103,11 @@ class DataExtractor:
                     emails.add(email)
 
             # 3. Ищем в data-атрибутах и других местах (опционально)
-            data_emails = tree.xpath("//*[@data-email]/@data-email")
-            for email in data_emails:
-                if email and "@" in email:
-                    emails.add(email)
+            if tree is not None:
+                data_emails = tree.xpath("//*[@data-email]/@data-email")
+                for email in data_emails:
+                    if email and "@" in email:
+                        emails.add(email)
 
         except Exception as e:
             logger.error(f"Ошибка при извлечении email: {e}")
