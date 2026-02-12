@@ -1,0 +1,56 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "contact-parser"
+version = "2.0.0"
+description = "Website parser for extracting contact information"
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = [
+    "requests>=2.32.0",
+    "lxml>=6.0.0",
+    "pydantic>=2.12.0",
+    "pydantic-settings>=2.12.0",
+    "phonenumbers>=8.13.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-cov>=4.1.0",
+    "pytest-mock>=3.11.0",
+    "black>=23.11.0",
+    "isort>=5.12.0",
+    "flake8>=6.1.0",
+]
+
+[project.scripts]
+contact-parser = "contact_parser.cli:main"
+
+[project.urls]
+"Homepage" = "https://github.com/svirilnmax/contact-parser"
+"Bug Tracker" = "https://github.com/svirilnmax/contact-parser/issues"
+
+[tool.pytest.ini_options]
+testpaths = ["src/tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "--cov=src/contact_parser",
+    "--cov-report=term-missing",
+]
+
+[tool.coverage.run]
+source = ["src/contact_parser"]
+omit = ["*/tests/*"]
+
+[tool.black]
+line-length = 88
+target-version = ['py38']
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3

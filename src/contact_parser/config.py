@@ -1,0 +1,129 @@
+import logging
+import sys
+from pathlib import Path
+from typing import Optional
+
+from .models import ParserSettings
+
+# Инициализируем логгер для этого модуля
+logger = logging.getLogger(__name__)
+
+
+def setup_logging(
+    level: Optional[str] = None,
+    log_file: Optional[str] = None,
+    log_format: Optional[str] = None,
+) -> None:
+    """Настраивает логирование для приложения"""
+
+    if level:
+        log_level = getattr(logging, str(level).upper(), None)
+        if log_level is None:
+            print(f"Предупреждение: Неизвестный уровень '{level}', использую INFO", file=sys.stderr)
+            log_level = logging.INFO
+    else:
+        log_level = logging.INFO
+
+    if log_format is None:
+        log_format = "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+    formatter = logging.Formatter(log_format, datefmt="%Y-%m-%d %H:%M:%S")
+
+    root_logger = logging.getLogger()
+    root_logger.setLevel(log_level)
+
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    stderr_handler = logging.StreamHandler(sys.stderr)
+    stderr_handler.setFormatter(formatter)
+    stderr_handler.setLevel(log_level)
+    root_logger.addHandler(stderr_handler)
+
+    if log_file:
+        try:
+            log_path = Path(log_file)
+            log_path.parent.mkdir(parents=True, exist_ok=True)
+
+            file_handler = logging.FileHandler(log_file, encoding="utf-8")
+            file_handler.setFormatter(formatter)
+            file_handler.setLevel(log_level)
+            root_logger.addHandler(file_handler)
+        except Exception as e:
+            print(f"Ошибка файлового логирования: {e}", file=sys.stderr)
+
+    for lib in ["urllib3", "requests", "lxml"]:
+        logging.getLogger(lib).setLevel(logging.WARNING)
+
+
+def load_settings_from_env() -> ParserSettings:
+    """
+    Загружает настройки из переменных окружения
+
+    Returns:
+        ParserSettings: Настройки парсера
+    """
+    try:
+        settings = ParserSettings()
+        logger.info("Настройки загружены из переменных окружения")
+        return settings
+    except Exception as e:
+        logger.error(f"Ошибка загрузки настроек из переменных окружения: {e}")
+        raise
+
+
+def load_settings_from_file(config_file: str) -> ParserSettings:
+    """
+    Загружает настройки из файла конфигурации
+
+    Args:
+        config_file: Путь к файлу конфигурации
+
+    Returns:
+        ParserSettings: Настройки парсера
+    """
+    try:
+        # Проверяем существование файла
+        config_path = Path(config_file)
+        if not config_path.exists():
+            raise FileNotFoundError(f"Конфигурационный файл не найден: {config_file}")
+
+        # Читаем содержимое файла
+        content = config_path.read_text(encoding="utf-8")
+        if not content.strip():
+            raise ValueError(f"Конфигурационный файл пуст: {config_file}")
+
+        # Используем exec для загрузки настроек из файла (современный подход)
+        settings_dict = {}
+
+        # Создаем локальное пространство имен
+        local_namespace = {}
+
+        try:
+            # Выполняем код из файла
+            exec(content, {}, local_namespace)
+        except SyntaxError as e:
+            # Перехватываем синтаксические ошибки
+            raise ValueError(f"Синтаксическая ошибка в конфигурационном файле {config_file}: {e}")
+
+        # Ищем настройки в пространстве имен
+        for key in ParserSettings.model_fields.keys():
+            if key in local_namespace:
+                settings_dict[key] = local_namespace[key]
+
+        if not settings_dict:
+            raise ValueError(f"Не найдено настроек в файле {config_file}")
+
+        settings = ParserSettings(**settings_dict)
+        logger.info(f"Настройки загружены из файла: {config_file}")
+        return settings
+
+    except FileNotFoundError as e:
+        logger.error(str(e))
+        raise
+    except ValueError as e:
+        logger.error(str(e))
+        raise
+    except Exception as e:
+        logger.error(f"Ошибка загрузки настроек из файла {config_file}: {e}")
+        raise
